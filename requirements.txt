@@ -1,0 +1,49 @@
+# ── Core LangChain / LangGraph ─────────────────────────────────────────────
+langchain>=0.3.0,<0.4.0
+langchain-core>=0.3.0,<0.4.0
+langchain-community>=0.3.0,<0.4.0
+langgraph>=0.2.0,<0.3.0
+langsmith>=0.1.0,<0.2.0
+langchain-text-splitters>=0.3.0,<0.4.0
+
+# ── LLM providers (install the one(s) you need) ────────────────────────────
+langchain-groq>=0.2.0,<0.3.0          # FREE tier — recommended primary LLM
+langchain-openai>=0.2.0,<0.3.0        # Optional: OpenAI
+langchain-ollama>=0.2.0,<0.3.0        # Optional: local Ollama
+
+# ── Embeddings ──────────────────────────────────────────────────────────────
+langchain-huggingface>=0.1.0,<0.2.0   # Free local embeddings (primary)
+sentence-transformers>=3.0.0,<4.0.0   # Backing library for HF embeddings
+torch>=2.0.0,<3.0.0                   # CPU-only is fine; add --index-url for CUDA
+
+# ── Vector store ────────────────────────────────────────────────────────────
+pinecone>=5.0.0,<6.0.0                # Pinecone free-tier (Starter plan)
+pinecone-text>=0.9.0,<1.0.0           # Sparse encoders (BM25)
+
+# ── Search ──────────────────────────────────────────────────────────────────
+tavily-python>=0.3.0,<0.4.0           # Tavily Search (1k req/month free)
+duckduckgo-search>=6.0.0,<7.0.0       # Zero-cost fallback search
+
+# ── Document loaders ────────────────────────────────────────────────────────
+pypdf>=4.0.0,<5.0.0                   # PDF ingestion
+unstructured>=0.15.0,<0.16.0          # Markdown + general document parsing
+
+# ── API / server ────────────────────────────────────────────────────────────
+fastapi>=0.115.0,<0.116.0
+uvicorn[standard]>=0.32.0,<0.33.0
+python-multipart>=0.0.12,<0.1.0       # File upload support
+pydantic>=2.9.0,<3.0.0
+pydantic-settings>=2.6.0,<3.0.0
+
+# ── Frontend ────────────────────────────────────────────────────────────────
+streamlit>=1.40.0,<2.0.0
+
+# ── Utilities ───────────────────────────────────────────────────────────────
+python-dotenv>=1.0.0,<2.0.0
+requests>=2.32.0,<3.0.0
+tenacity>=9.0.0,<10.0.0               # Retry logic
+aiofiles>=24.0.0,<25.0.0
+
+# ── Testing ─────────────────────────────────────────────────────────────────
+pytest>=8.0.0,<9.0.0
+pytest-asyncio>=0.24.0,<0.25.0
