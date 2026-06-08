@@ -1,62 +1,75 @@
 
 # ══════════════════════════════════════════════════════════════════════════════
 # RENDER.COM PRODUCTION DOCKERFILE — BACKEND ONLY
+# Pre-downloads HuggingFace model to avoid timeout on first request
 # ══════════════════════════════════════════════════════════════════════════════
- 
+
 FROM python:3.11-slim AS builder
- 
+
 WORKDIR /build
- 
+
 RUN apt-get update && apt-get install -y --no-install-recommends \
         build-essential \
         libpoppler-cpp-dev \
         libmagic1 \
         git \
     && rm -rf /var/lib/apt/lists/*
- 
+
 COPY requirements.txt .
- 
+
 RUN pip install --no-cache-dir --upgrade pip setuptools wheel && \
     pip wheel --no-cache-dir --no-deps --wheel-dir /build/wheels -r requirements.txt
- 
+
 # ── Runtime ───────────────────────────────────────────────────────────────────
 FROM python:3.11-slim
- 
+
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
-    PIP_NO_CACHE_DIR=1
- 
+    PIP_NO_CACHE_DIR=1 \
+    HF_HOME=/app/.cache/huggingface
+
 RUN apt-get update && apt-get install -y --no-install-recommends \
         libmagic1 \
         libpoppler-cpp-dev \
         curl \
     && rm -rf /var/lib/apt/lists/*
- 
+
 RUN groupadd -r appuser && useradd -r -g appuser appuser
- 
+
 WORKDIR /app
- 
+
 COPY --from=builder /build/wheels /wheels
 RUN pip install --no-cache /wheels/* && rm -rf /wheels
- 
+
 COPY src/ src/
 COPY data/ data/
- 
-RUN mkdir -p data/uploads && \
+
+RUN mkdir -p data/uploads .cache/huggingface && \
     chown -R appuser:appuser /app
- 
+
+# ── PRE-DOWNLOAD HuggingFace model (before startup) ──────────────────────────
+# This prevents timeout on first /chat request
+RUN python -c "
+from sentence_transformers import SentenceTransformer
+import os
+os.environ['HF_HOME'] = '/app/.cache/huggingface'
+print('Pre-downloading HuggingFace model...')
+model = SentenceTransformer('sentence-transformers/all-MiniLM-L6-v2')
+print('Model downloaded successfully!')
+"
+
 USER appuser
- 
+
 EXPOSE 8000
- 
-HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
+
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
     CMD curl -f http://localhost:${PORT:-8000}/health || exit 1
- 
+
 # Shell form — $PORT expands at runtime from Render's injected env var
 CMD uvicorn src.api.fastapi_app:app --host 0.0.0.0 --port ${PORT:-8000} --workers 1 --log-level info
  
 
-
+# ===============================================
 # version: "3.9"
 
 # services:
