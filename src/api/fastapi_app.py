@@ -1,14 +1,15 @@
 
-
 """
 FastAPI application — REST interface for the multi-agent orchestrator.
 Render.com compatible — reads PORT from environment variable.
 """
 
+import asyncio
 import os
 import shutil
 import time
 import uuid
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -45,6 +46,9 @@ app.add_middleware(
 
 UPLOAD_DIR = Path("data/uploads")
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+
+# Thread pool for blocking operations
+executor = ThreadPoolExecutor(max_workers=5)
 
 
 # ── Request / response models ─────────────────────────────────────────────────
@@ -118,9 +122,14 @@ async def chat(request: ChatRequest) -> ChatResponse:
 
     with Timer("api.chat_latency"):
         try:
-            state = run_workflow(
-                query=request.query,
-                messages=request.messages or [],
+            # Run blocking workflow in thread pool (prevents timeout on Render)
+            loop = asyncio.get_event_loop()
+            state = await loop.run_in_executor(
+                executor,
+                lambda: run_workflow(
+                    query=request.query,
+                    messages=request.messages or [],
+                ),
             )
         except Exception as exc:
             record_error("api.chat")
@@ -211,6 +220,8 @@ if __name__ == "__main__":
         port=port,
         log_level=settings.log_level.lower(),
     )
+
+
 
 
 # """
