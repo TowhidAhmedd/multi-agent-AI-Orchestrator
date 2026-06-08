@@ -25,12 +25,8 @@ def init_langsmith() -> bool:
         return False
 
     try:
-        from langsmith import Client
-
-        client = Client(api_key=settings.langsmith_api_key)
-        # Light connectivity check
-        list(client.list_projects(limit=1))
-        logger.info("LangSmith connected → project: %s", settings.langsmith_project)
+        settings.configure_langsmith()
+        logger.info("LangSmith tracing enabled → project: %s", settings.langsmith_project)
         return True
     except Exception as exc:
         logger.warning("LangSmith init failed: %s", exc)

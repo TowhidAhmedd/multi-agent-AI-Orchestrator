@@ -1,9 +1,8 @@
 # ── Build stage ───────────────────────────────────────────────────────────────
 FROM python:3.11-slim AS builder
 
-WORKDIR /app
+WORKDIR /build
 
-# System dependencies for pypdf, unstructured, sentence-transformers
 RUN apt-get update && apt-get install -y --no-install-recommends \
         build-essential \
         libpoppler-cpp-dev \
@@ -12,38 +11,46 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .
-RUN pip install --no-cache-dir --upgrade pip \
-    && pip install --no-cache-dir -r requirements.txt
+
+# CPU-only torch keeps image smaller and avoids OOM on Render free tier
+RUN pip install --upgrade pip setuptools wheel && \
+    pip wheel --no-cache-dir --wheel-dir /build/wheels \
+        --extra-index-url https://download.pytorch.org/whl/cpu \
+        -r requirements.txt
+
 
 # ── Runtime stage ─────────────────────────────────────────────────────────────
 FROM python:3.11-slim AS runtime
 
-WORKDIR /app
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PIP_NO_CACHE_DIR=1 \
+    HF_HOME=/tmp/.cache/huggingface \
+    TRANSFORMERS_CACHE=/tmp/.cache/huggingface \
+    PORT=8000
 
-# Copy installed packages from builder
-COPY --from=builder /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages
-COPY --from=builder /usr/local/bin /usr/local/bin
-
-# Runtime system libs
 RUN apt-get update && apt-get install -y --no-install-recommends \
         libmagic1 \
         libpoppler-cpp-dev \
+        curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy application source
+WORKDIR /app
+
+COPY --from=builder /build/wheels /wheels
+RUN pip install --no-cache /wheels/* && rm -rf /wheels
+
 COPY src/ src/
 COPY frontend/ frontend/
 COPY data/ data/
+COPY start.sh start.sh
 
-# Create upload directory
-RUN mkdir -p data/uploads
+RUN mkdir -p data/uploads /tmp/.cache/huggingface && \
+    chmod +x start.sh
 
-# Expose FastAPI port
 EXPOSE 8000
 
-# Health-check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=20s --retries=3 \
-    CMD python -c "import requests; requests.get('http://localhost:8000/health')" || exit 1
+HEALTHCHECK --interval=30s --timeout=10s --start-period=90s --retries=3 \
+    CMD curl -f "http://localhost:${PORT}/health" || exit 1
 
-# Default command: start FastAPI
-CMD ["uvicorn", "src.api.fastapi_app:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["./start.sh"]

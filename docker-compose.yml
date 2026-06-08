@@ -1,113 +1,58 @@
+version: "3.9"
 
-FROM python:3.11-slim AS builder
+services:
+  # ── FastAPI backend ──────────────────────────────────────────────────────────
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ai-orchestrator-api
+    env_file: .env
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data:/app/data
+      - ./src:/app/src
+    environment:
+      PORT: "8000"
+    command: >
+      sh -c "uvicorn src.api.fastapi_app:app
+        --host 0.0.0.0
+        --port $${PORT}
+        --workers 1
+        --log-level info"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
 
-WORKDIR /build
+  # ── Streamlit frontend ────────────────────────────────────────────────────────
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ai-orchestrator-ui
+    env_file: .env
+    environment:
+      API_BASE_URL: http://api:8000
+    ports:
+      - "8501:8501"
+    volumes:
+      - ./frontend:/app/frontend
+      - ./src:/app/src
+    command: >
+      streamlit run frontend/streamlit_app.py
+        --server.port 8501
+        --server.address 0.0.0.0
+        --server.headless true
+        --browser.gatherUsageStats false
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
-        build-essential \
-        libpoppler-cpp-dev \
-        libmagic1 \
-        git \
-    && rm -rf /var/lib/apt/lists/*
-
-COPY requirements.txt .
-
-RUN pip install --upgrade pip setuptools wheel && \
-    pip wheel --no-cache-dir --wheel-dir /build/wheels -r requirements.txt
-
-
-FROM python:3.11-slim
-
-ENV PYTHONUNBUFFERED=1 \
-    PYTHONDONTWRITEBYTECODE=1 \
-    PIP_NO_CACHE_DIR=1 \
-    HF_HOME=/app/.cache/huggingface \
-    PORT=8000
-
-RUN apt-get update && apt-get install -y --no-install-recommends \
-        libmagic1 \
-        curl \
-    && rm -rf /var/lib/apt/lists/*
-
-RUN groupadd -r appuser && useradd -r -g appuser appuser
-
-WORKDIR /app
-
-COPY --from=builder /build/wheels /wheels
-RUN pip install --no-cache /wheels/* && rm -rf /wheels
-
-COPY src ./src
-COPY data ./data
-
-RUN mkdir -p data/uploads .cache/huggingface && \
-    chown -R appuser:appuser /app
-
-USER appuser
-
-EXPOSE 8000
-
-HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
-    CMD curl -f http://localhost:8000/health || exit 1
-
-CMD ["sh", "-c", "uvicorn src.api.fastapi_app:app --host 0.0.0.0 --port ${PORT} --workers 1 --log-level info"]
-
-
- 
-
-# ===============================================
-# version: "3.9"
-
-# services:
-#   # ── FastAPI backend ──────────────────────────────────────────────────────────
-#   api:
-#     build:
-#       context: .
-#       dockerfile: Dockerfile
-#     container_name: ai-orchestrator-api
-#     env_file: .env
-#     ports:
-#       - "8000:8000"
-#     volumes:
-#       - ./data:/app/data
-#       - ./src:/app/src          # hot-reload in dev
-#     command: >
-#       uvicorn src.api.fastapi_app:app
-#         --host 0.0.0.0
-#         --port 8000
-#         --reload
-#     restart: unless-stopped
-#     healthcheck:
-#       test: ["CMD", "python", "-c",
-#              "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
-#       interval: 30s
-#       timeout: 10s
-#       retries: 3
-#       start_period: 20s
-
-#   # ── Streamlit frontend ────────────────────────────────────────────────────────
-#   frontend:
-#     build:
-#       context: .
-#       dockerfile: Dockerfile
-#     container_name: ai-orchestrator-ui
-#     env_file: .env
-#     environment:
-#       API_BASE_URL: http://api:8000
-#     ports:
-#       - "8501:8501"
-#     volumes:
-#       - ./frontend:/app/frontend
-#       - ./src:/app/src
-#     command: >
-#       streamlit run frontend/streamlit_app.py
-#         --server.port 8501
-#         --server.address 0.0.0.0
-#         --server.headless true
-#         --browser.gatherUsageStats false
-#     depends_on:
-#       api:
-#         condition: service_healthy
-#     restart: unless-stopped
-
-# volumes:
-#   data:
+volumes:
+  data:
