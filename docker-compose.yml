@@ -1,56 +1,131 @@
-version: "3.9"
 
-services:
-  # ── FastAPI backend ──────────────────────────────────────────────────────────
-  api:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: ai-orchestrator-api
-    env_file: .env
-    ports:
-      - "8000:8000"
-    volumes:
-      - ./data:/app/data
-      - ./src:/app/src          # hot-reload in dev
-    command: >
-      uvicorn src.api.fastapi_app:app
-        --host 0.0.0.0
-        --port 8000
-        --reload
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "python", "-c",
-             "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 20s
+ 
+# ── Stage 1: Build dependencies ───────────────────────────────────────────────
+FROM python:3.11-slim AS builder
+ 
+WORKDIR /build
+ 
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        build-essential \
+        libpoppler-cpp-dev \
+        libmagic1 \
+        git \
+    && rm -rf /var/lib/apt/lists/*
+ 
+COPY requirements.txt .
+ 
+RUN pip install --no-cache-dir --upgrade pip setuptools wheel && \
+    pip wheel --no-cache-dir --no-deps --wheel-dir /build/wheels -r requirements.txt
+ 
+# ── Stage 2: Minimal runtime image ────────────────────────────────────────────
+FROM python:3.11-slim
+ 
+LABEL service="ai-orchestrator-api"
+LABEL environment="production"
+ 
+# Python optimisations
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PIP_NO_CACHE_DIR=1
+ 
+# Runtime system deps only
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        libmagic1 \
+        libpoppler-cpp-dev \
+        curl \
+    && rm -rf /var/lib/apt/lists/*
+ 
+# Non-root user (security)
+RUN groupadd -r appuser && useradd -r -g appuser appuser
+ 
+WORKDIR /app
+ 
+# Install wheels from builder
+COPY --from=builder /build/wheels /wheels
+RUN pip install --no-cache /wheels/* && rm -rf /wheels
+ 
+# Copy application source
+COPY src/ src/
+COPY data/ data/
+ 
+# Upload directory with correct permissions
+RUN mkdir -p data/uploads && \
+    chown -R appuser:appuser /app
+ 
+USER appuser
+ 
+EXPOSE 8000
+ 
+# ── Health check ──────────────────────────────────────────────────────────────
+HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
+    CMD curl -f http://localhost:${PORT:-8000}/health || exit 1
+ 
+# ── Start command ─────────────────────────────────────────────────────────────
+# Render injects $PORT automatically — we read it here.
+# Using shell form so the variable is expanded at runtime.
+CMD uvicorn src.api.fastapi_app:app \
+        --host 0.0.0.0 \
+        --port ${PORT:-8000} \
+        --workers 2 \
+        --log-level info \
+        --access-log \
+        --no-use-colors
+ 
 
-  # ── Streamlit frontend ────────────────────────────────────────────────────────
-  frontend:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: ai-orchestrator-ui
-    env_file: .env
-    environment:
-      API_BASE_URL: http://api:8000
-    ports:
-      - "8501:8501"
-    volumes:
-      - ./frontend:/app/frontend
-      - ./src:/app/src
-    command: >
-      streamlit run frontend/streamlit_app.py
-        --server.port 8501
-        --server.address 0.0.0.0
-        --server.headless true
-        --browser.gatherUsageStats false
-    depends_on:
-      api:
-        condition: service_healthy
-    restart: unless-stopped
 
-volumes:
-  data:
+# version: "3.9"
+
+# services:
+#   # ── FastAPI backend ──────────────────────────────────────────────────────────
+#   api:
+#     build:
+#       context: .
+#       dockerfile: Dockerfile
+#     container_name: ai-orchestrator-api
+#     env_file: .env
+#     ports:
+#       - "8000:8000"
+#     volumes:
+#       - ./data:/app/data
+#       - ./src:/app/src          # hot-reload in dev
+#     command: >
+#       uvicorn src.api.fastapi_app:app
+#         --host 0.0.0.0
+#         --port 8000
+#         --reload
+#     restart: unless-stopped
+#     healthcheck:
+#       test: ["CMD", "python", "-c",
+#              "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+#       interval: 30s
+#       timeout: 10s
+#       retries: 3
+#       start_period: 20s
+
+#   # ── Streamlit frontend ────────────────────────────────────────────────────────
+#   frontend:
+#     build:
+#       context: .
+#       dockerfile: Dockerfile
+#     container_name: ai-orchestrator-ui
+#     env_file: .env
+#     environment:
+#       API_BASE_URL: http://api:8000
+#     ports:
+#       - "8501:8501"
+#     volumes:
+#       - ./frontend:/app/frontend
+#       - ./src:/app/src
+#     command: >
+#       streamlit run frontend/streamlit_app.py
+#         --server.port 8501
+#         --server.address 0.0.0.0
+#         --server.headless true
+#         --browser.gatherUsageStats false
+#     depends_on:
+#       api:
+#         condition: service_healthy
+#     restart: unless-stopped
+
+# volumes:
+#   data:
