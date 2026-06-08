@@ -1,6 +1,8 @@
 
+# ══════════════════════════════════════════════════════════════════════════════
+# RENDER.COM PRODUCTION DOCKERFILE — BACKEND ONLY
+# ══════════════════════════════════════════════════════════════════════════════
  
-# ── Stage 1: Build dependencies ───────────────────────────────────────────────
 FROM python:3.11-slim AS builder
  
 WORKDIR /build
@@ -17,38 +19,29 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir --upgrade pip setuptools wheel && \
     pip wheel --no-cache-dir --no-deps --wheel-dir /build/wheels -r requirements.txt
  
-# ── Stage 2: Minimal runtime image ────────────────────────────────────────────
+# ── Runtime ───────────────────────────────────────────────────────────────────
 FROM python:3.11-slim
  
-LABEL service="ai-orchestrator-api"
-LABEL environment="production"
- 
-# Python optimisations
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1
  
-# Runtime system deps only
 RUN apt-get update && apt-get install -y --no-install-recommends \
         libmagic1 \
         libpoppler-cpp-dev \
         curl \
     && rm -rf /var/lib/apt/lists/*
  
-# Non-root user (security)
 RUN groupadd -r appuser && useradd -r -g appuser appuser
  
 WORKDIR /app
  
-# Install wheels from builder
 COPY --from=builder /build/wheels /wheels
 RUN pip install --no-cache /wheels/* && rm -rf /wheels
  
-# Copy application source
 COPY src/ src/
 COPY data/ data/
  
-# Upload directory with correct permissions
 RUN mkdir -p data/uploads && \
     chown -R appuser:appuser /app
  
@@ -56,20 +49,11 @@ USER appuser
  
 EXPOSE 8000
  
-# ── Health check ──────────────────────────────────────────────────────────────
 HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
     CMD curl -f http://localhost:${PORT:-8000}/health || exit 1
  
-# ── Start command ─────────────────────────────────────────────────────────────
-# Render injects $PORT automatically — we read it here.
-# Using shell form so the variable is expanded at runtime.
-CMD uvicorn src.api.fastapi_app:app \
-        --host 0.0.0.0 \
-        --port ${PORT:-8000} \
-        --workers 2 \
-        --log-level info \
-        --access-log \
-        --no-use-colors
+# Shell form — $PORT expands at runtime from Render's injected env var
+CMD uvicorn src.api.fastapi_app:app --host 0.0.0.0 --port ${PORT:-8000} --workers 1 --log-level info
  
 
 
