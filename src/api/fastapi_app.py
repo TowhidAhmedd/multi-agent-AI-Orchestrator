@@ -193,13 +193,33 @@ async def upload_document(
 
 
 # ── Dev server entry-point ────────────────────────────────────────────────────
+# if __name__ == "__main__":
+#     import uvicorn
+
+#     uvicorn.run(
+#         "src.api.fastapi_app:app",
+#         host=settings.api_host,
+#         port=settings.api_port,
+#         reload=settings.debug,
+#         log_level=settings.log_level.lower(),
+#     )
+
 if __name__ == "__main__":
+
+    import os
     import uvicorn
 
     uvicorn.run(
+
         "src.api.fastapi_app:app",
+
         host=settings.api_host,
-        port=settings.api_port,
+
+        port=int(os.environ.get("PORT", settings.api_port)),
+
         reload=settings.debug,
+
         log_level=settings.log_level.lower(),
+
     )
+    
