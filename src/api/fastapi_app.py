@@ -186,10 +186,23 @@ async def upload_document(
 
 
 # ── Entry point ───────────────────────────────────────────────────────────────
+# if __name__ == "__main__":
+#     import uvicorn
+
+#     # Render injects PORT — always read from env
+#     port = int(os.environ.get("PORT", 8000))
+
+#     uvicorn.run(
+#         "src.api.fastapi_app:app",
+#         host="0.0.0.0",
+#         port=port,
+#         log_level=settings.log_level.lower(),
+#     )
+
 if __name__ == "__main__":
     import uvicorn
 
-    # Render injects PORT — always read from env
+    # Render automatically injects PORT env var
     port = int(os.environ.get("PORT", 8000))
 
     uvicorn.run(
@@ -198,7 +211,6 @@ if __name__ == "__main__":
         port=port,
         log_level=settings.log_level.lower(),
     )
-
 
 
 # """
